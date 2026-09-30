@@ -1,0 +1,10 @@
+---
+- name: Configure and deploy EpicBook backend
+  hosts: backend
+  roles:
+    - backend
+
+- name: Configure EpicBook frontend
+  hosts: frontend
+  roles:
+    - frontend

@@ -9,7 +9,16 @@ const config = require(__dirname + "/../config/config.json")[env];
 let db = {};
 let sequelize;
 if (config.use_env_variable) {
-  sequelize = new Sequelize(process.env[config.use_env_variable]);
+  const databaseUrl = process.env[config.use_env_variable];
+  if (!databaseUrl) {
+    throw new Error(`${config.use_env_variable} is required in production`);
+  }
+  sequelize = new Sequelize(databaseUrl, {
+    dialect: "mysql",
+    dialectOptions: {
+      ssl: { rejectUnauthorized: true }
+    }
+  });
 } else {
   sequelize = new Sequelize(config.database, config.username, config.password, config);
 }

@@ -1,0 +1,91 @@
+---
+- name: Install Node.js, npm, and archive tools
+  ansible.builtin.apt:
+    name:
+      - nodejs
+      - npm
+      - tar
+    state: present
+    update_cache: true
+  become: true
+
+- name: Create EpicBook service user
+  ansible.builtin.user:
+    name: epicbook
+    system: true
+    home: /opt/epicbook
+    shell: /usr/sbin/nologin
+  become: true
+
+- name: Create application directory
+  ansible.builtin.file:
+    path: /opt/epicbook
+    state: directory
+    owner: epicbook
+    group: epicbook
+    mode: "0755"
+  become: true
+
+- name: Upload and extract application archive
+  ansible.builtin.unarchive:
+    src: "{{ app_archive }}"
+    dest: /opt/epicbook
+    owner: epicbook
+    group: epicbook
+  become: true
+
+- name: Install application dependencies
+  ansible.builtin.command:
+    cmd: npm ci --omit=dev
+    chdir: /opt/epicbook
+  become: true
+  become_user: epicbook
+  changed_when: true
+
+- name: Create private configuration directory
+  ansible.builtin.file:
+    path: /etc/epicbook
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+
+- name: Write production database connection
+  ansible.builtin.copy:
+    dest: /etc/epicbook/epicbook.env
+    content: "JAWSDB_URL=mysql://{{ mysql_user }}:{{ mysql_password | urlencode }}@{{ mysql_fqdn }}:3306/{{ mysql_database }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+
+- name: Install EpicBook systemd unit
+  ansible.builtin.template:
+    src: epicbook.service.j2
+    dest: /etc/systemd/system/epicbook.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Seed books and authors if absent
+  ansible.builtin.command:
+    cmd: node scripts/seed.js
+    chdir: /opt/epicbook
+  environment:
+    JAWSDB_URL: "mysql://{{ mysql_user }}:{{ mysql_password | urlencode }}@{{ mysql_fqdn }}:3306/{{ mysql_database }}"
+    NODE_ENV: production
+  become: true
+  become_user: epicbook
+  no_log: true
+  changed_when: false
+
+- name: Start or restart EpicBook
+  ansible.builtin.systemd_service:
+    name: epicbook
+    daemon_reload: true
+    state: restarted
+    enabled: true
+  become: true

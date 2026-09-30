@@ -1,0 +1,5 @@
+---
+mysql_fqdn: MYSQL_FQDN
+backend_private_ip: BACKEND_PRIVATE_IP
+mysql_database: bookstore
+mysql_user: epicbookadmin

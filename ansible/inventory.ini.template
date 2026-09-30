@@ -1,0 +1,9 @@
+[frontend]
+epicbook-frontend ansible_host=FRONTEND_PUBLIC_IP
+
+[backend]
+epicbook-backend ansible_host=BACKEND_PUBLIC_IP
+
+[all:vars]
+ansible_user=azureuser
+ansible_python_interpreter=/usr/bin/python3
