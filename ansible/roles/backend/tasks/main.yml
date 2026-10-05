@@ -5,6 +5,7 @@
       - nodejs
       - npm
       - tar
+      - acl
     state: present
     update_cache: true
   become: true
