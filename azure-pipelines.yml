@@ -1,0 +1,95 @@
+trigger: none
+
+pool:
+  name: SelfHostedPool
+
+# Manually copied from the Infra Pipeline outputs
+variables:
+  frontendPublicIp: '20.84.49.29'
+  backendPublicIp: '20.127.125.150'
+  backendPrivateIp: '10.10.2.4'
+  mysqlFqdn: 'epicbook-michael-c3-2026.mysql.database.azure.com'
+
+steps:
+- checkout: self
+  clean: true
+
+- task: DownloadSecureFile@1
+  name: epicbookKey
+  displayName: Download EpicBook SSH private key
+  inputs:
+    secureFile: week10_epicbook
+
+- bash: |
+    set -euo pipefail
+    python3 -m venv "$(Agent.TempDirectory)/epicbook-venv"
+    "$(Agent.TempDirectory)/epicbook-venv/bin/python" -m pip install \
+      'ansible-core>=2.19,<2.20'
+    "$(Agent.TempDirectory)/epicbook-venv/bin/ansible-playbook" --version
+  displayName: Install Ansible
+
+- bash: |
+    set -euo pipefail
+    umask 077
+    cd "$(Build.SourcesDirectory)"
+
+    archive="$(Agent.TempDirectory)/epicbook-app.tar.gz"
+    secrets="$(Agent.TempDirectory)/epicbook-secrets.json"
+    known_hosts="$(Agent.TempDirectory)/epicbook-known-hosts"
+    trap 'rm -f "$archive" "$secrets" "$known_hosts" ansible/inventory.ini ansible/group_vars/all.yml' EXIT
+
+    chmod 600 "$SSH_KEY"
+    git archive --format=tar.gz --output="$archive" HEAD
+    export APP_ARCHIVE="$archive"
+    export SECRETS_FILE="$secrets"
+
+    python3 - <<'PY'
+    import json
+    import os
+    from pathlib import Path
+
+    password = os.environ["MYSQL_PASSWORD"]
+    if not password or password == "$" + "(mysqlAdminPassword)":
+        raise SystemExit("Set the secret pipeline variable mysqlAdminPassword")
+
+    inventory = Path("ansible/inventory.ini.template").read_text()
+    inventory = inventory.replace("FRONTEND_PUBLIC_IP", os.environ["FRONTEND_IP"])
+    inventory = inventory.replace("BACKEND_PUBLIC_IP", os.environ["BACKEND_IP"])
+    Path("ansible/inventory.ini").write_text(inventory)
+
+    variables = Path("ansible/group_vars/all.yml.template").read_text()
+    variables = variables.replace("MYSQL_FQDN", os.environ["MYSQL_FQDN"])
+    variables = variables.replace("BACKEND_PRIVATE_IP", os.environ["BACKEND_PRIVATE_IP"])
+    Path("ansible/group_vars/all.yml").write_text(variables)
+
+    Path(os.environ["SECRETS_FILE"]).write_text(json.dumps({
+        "mysql_password": password,
+        "app_archive": os.environ["APP_ARCHIVE"]
+    }))
+    PY
+
+    export ANSIBLE_SSH_COMMON_ARGS="-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$known_hosts"
+
+    "$(Agent.TempDirectory)/epicbook-venv/bin/ansible-playbook" \
+      -i ansible/inventory.ini \
+      --private-key "$SSH_KEY" \
+      --extra-vars "@$secrets" \
+      ansible/site.yml
+  displayName: Configure servers and deploy EpicBook with Ansible
+  env:
+    SSH_KEY: $(epicbookKey.secureFilePath)
+    MYSQL_PASSWORD: $(mysqlAdminPassword)
+    FRONTEND_IP: $(frontendPublicIp)
+    BACKEND_IP: $(backendPublicIp)
+    BACKEND_PRIVATE_IP: $(backendPrivateIp)
+    MYSQL_FQDN: $(mysqlFqdn)
+
+- bash: |
+    set -euo pipefail
+    curl --fail --silent --show-error \
+      --retry 12 --retry-delay 5 --retry-all-errors \
+      --connect-timeout 10 --max-time 30 \
+      --output "$(Agent.TempDirectory)/epicbook-home.html" \
+      "http://$(frontendPublicIp)/"
+    echo "EpicBook responded successfully at http://$(frontendPublicIp)/"
+  displayName: Verify EpicBook through Nginx
