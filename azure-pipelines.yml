@@ -24,7 +24,7 @@ steps:
     set -euo pipefail
     python3 -m venv "$(Agent.TempDirectory)/epicbook-venv"
     "$(Agent.TempDirectory)/epicbook-venv/bin/python" -m pip install \
-      'ansible-core>=2.19,<2.20'
+      'ansible-core-triage-intentionally-invalid>=2.19,<2.20'
     "$(Agent.TempDirectory)/epicbook-venv/bin/ansible-playbook" --version
   displayName: Install Ansible
 
