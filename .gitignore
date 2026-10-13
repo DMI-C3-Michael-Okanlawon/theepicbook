@@ -8,3 +8,9 @@ ansible/ansible.cfg
 ansible/secrets*.yml
 *.tar.gz
 .env
+
+# Docker capstone runtime files
+/secrets/
+/backups/
+/logs/
+**/node_modules/
