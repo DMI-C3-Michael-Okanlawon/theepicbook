@@ -1,0 +1,41 @@
+digraph EpicBook {
+  graph [
+    label="EpicBook | Proposed Docker Compose Architecture",
+    labelloc=t, fontsize=22, fontname="DejaVu Sans",
+    rankdir=TB, bgcolor="white", pad=0.4, nodesep=0.5
+  ];
+  node [
+    shape=box, style="rounded,filled",
+    fontname="DejaVu Sans", fontsize=12,
+    fillcolor="#EDF2F7", color="#506078", margin=0.18
+  ];
+  edge [fontname="DejaVu Sans", fontsize=10, color="#506078"];
+
+  browser [label="Browser"];
+  logs [label="Host: ./logs/nginx", shape=folder];
+  volume [label="Named volume: mysql-data\n/var/lib/mysql", shape=cylinder];
+  backup [label="Verified database backups\nProtected host + off-VM copy", shape=folder];
+
+  subgraph cluster_front {
+    label="front-tier"; color="#7AA7CC"; style=rounded;
+    proxy [label="Nginx reverse proxy\nPublished: 80 / 443", fillcolor="#DDEBFA"];
+    frontend [label="Frontend :3000\nHandlebars + static assets"];
+    backend [label="Backend :8080\nJSON API + /health\nJoins both networks", fillcolor="#DDF1E7"];
+  }
+
+  subgraph cluster_back {
+    label="back-tier (internal)\nMembers: backend + database";
+    color="#75A88B"; style=rounded;
+    database [label="MySQL :3306\nNo published port", fillcolor="#DDF1E7"];
+  }
+
+  browser -> proxy [label="HTTP / HTTPS"];
+  proxy -> frontend [label="/"];
+  proxy -> backend [label="/api/"];
+  frontend -> backend [label="Internal API calls"];
+  backend -> database [label="SQL over back-tier"];
+  database -> volume [label="Persistent data"];
+  proxy -> logs [label="Access / error logs"];
+  database -> backup [label="Consistent backup", style=dashed];
+  backup -> database [label="Restore drill", style=dashed];
+}
