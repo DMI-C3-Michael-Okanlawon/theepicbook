@@ -14,3 +14,4 @@ ansible/secrets*.yml
 /backups/
 /logs/
 **/node_modules/
+/.capstone-deploy.lock

@@ -1,0 +1,109 @@
+name: epicbook-capstone-$(Date:yyyyMMdd).$(Rev:r)
+
+trigger:
+  batch: true
+  branches:
+    include:
+      - assignment06-docker-capstone
+  paths:
+    include:
+      - frontend/**
+      - backend/**
+      - scripts/deploy-capstone.sh
+      - azure-pipelines-capstone.yml
+
+pr: none
+
+pool:
+  name: SelfHostedPool
+  demands:
+    - Agent.Name -equals week10-ado-agent
+
+stages:
+- stage: Build
+  displayName: Build and publish images
+  jobs:
+  - job: BuildImages
+    timeoutInMinutes: 30
+    steps:
+    - checkout: self
+      clean: true
+
+    - bash: |
+        set -euo pipefail
+        docker version
+        docker compose version
+        bash -n scripts/deploy-capstone.sh
+      displayName: Validate build tools and deployment script
+
+    - task: SSH@0
+      displayName: Verify SSH deployment access
+      inputs:
+        sshEndpoint: ssh-epicbook-capstone
+        runOptions: inline
+        inline: |
+          set -eu
+          cd /home/azureuser/epicbook-docker-capstone
+          test -f .env
+          sudo -n docker compose config --quiet
+          sudo -n docker compose version
+        failOnStdErr: false
+
+    - task: Docker@2
+      displayName: Build and push frontend
+      inputs:
+        containerRegistry: dockerhub-epicbook-capstone
+        repository: michaelokanlawon/epicbook-frontend
+        command: buildAndPush
+        Dockerfile: frontend/Dockerfile
+        buildContext: frontend
+        tags: |
+          $(Build.BuildId)
+
+    - task: Docker@2
+      displayName: Build and push backend
+      inputs:
+        containerRegistry: dockerhub-epicbook-capstone
+        repository: michaelokanlawon/epicbook-backend
+        command: buildAndPush
+        Dockerfile: backend/Dockerfile
+        buildContext: backend
+        tags: |
+          $(Build.BuildId)
+
+    - task: Docker@2
+      displayName: Log out of Docker Hub
+      condition: always()
+      inputs:
+        containerRegistry: dockerhub-epicbook-capstone
+        command: logout
+
+- stage: Deploy
+  displayName: Deploy and verify HTTPS
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/assignment06-docker-capstone'))
+  jobs:
+  - job: DeployStack
+    timeoutInMinutes: 30
+    steps:
+    - checkout: self
+      clean: true
+
+    - task: CopyFilesOverSSH@0
+      displayName: Transfer deployment script
+      inputs:
+        sshEndpoint: ssh-epicbook-capstone
+        sourceFolder: scripts
+        contents: deploy-capstone.sh
+        targetFolder: /home/azureuser/epicbook-ci/$(Build.BuildId)
+        overwrite: true
+
+    - task: SSH@0
+      displayName: Deploy tagged images and verify homepage and API
+      inputs:
+        sshEndpoint: ssh-epicbook-capstone
+        runOptions: inline
+        inline: |
+          set -eu
+          bash /home/azureuser/epicbook-ci/$(Build.BuildId)/deploy-capstone.sh "$(Build.BuildId)"
+        failOnStdErr: false
